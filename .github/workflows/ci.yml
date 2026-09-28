@@ -37,8 +37,15 @@ jobs:
       - name: Byte-compile the app
         run: python -m compileall -q app.py
 
+      - name: Verify Node is available for the parity test
+        # tests/test_app.py skips the browser/Python parity check without node,
+        # so fail loudly here rather than letting it pass silently.
+        run: |
+          node --version
+          test -f tests/js/parity_check.mjs
+
       - name: Run tests
-        run: pytest -v
+        run: pytest -v -rs
 
       - name: Boot the server and hit /healthz
         run: |
