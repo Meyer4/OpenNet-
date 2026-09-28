@@ -21,6 +21,32 @@ app = Flask(__name__)
 # --------------------------------------------------------------------------
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "opennet-dev-secret")
 
+# Base URL the site is served from. Flask serves from "/", GitHub Pages serves a
+# project site from "/<repo>/". Always ends with a slash.
+BASE_URL = os.environ.get("BASE_URL", "/")
+if not BASE_URL.endswith("/"):
+    BASE_URL += "/"
+
+# A static build writes each page to <route>/index.html, so links need a
+# trailing slash for the directory index to resolve.
+STATIC_BUILD = os.environ.get("OPENNET_STATIC", "0") == "1"
+
+
+def site_url(path):
+    """Build a link that works from BASE_URL on both Flask and GitHub Pages.
+
+    A static build writes pages to <route>/index.html, so page links need a
+    trailing slash - but real files (anything with an extension) must not get
+    one, or the asset request 404s.
+    """
+    if path == "/":
+        return BASE_URL
+    clean = path.strip("/")
+    last = clean.rsplit("/", 1)[-1]
+    if STATIC_BUILD and "." not in last:
+        clean += "/"
+    return BASE_URL + clean
+
 # Where OpenBot looks for documents.  Defaults to the ``docs`` folder that
 # ships with the repo so the assistant works out of the box on any host.
 DOCS_DIR = os.environ.get("OPENBOT_DOCS_DIR") or os.path.join(
@@ -97,9 +123,9 @@ SHELL = """<!DOCTYPE html>
 {% block body %}{% endblock %}
 </main>
 <div class="bottom-nav">
-  <div class="nav-item"><a href="/" class="{{ 'active' if active == 'home' }}">Home</a></div>
-  <div class="nav-item"><a href="/explore" class="{{ 'active' if active == 'explore' }}">Explore</a></div>
-  <div class="nav-item"><a href="/settings" class="{{ 'active' if active == 'settings' }}">Settings</a></div>
+  <div class="nav-item"><a href="{{ u('/') }}" class="{{ 'active' if active == 'home' }}">Home</a></div>
+  <div class="nav-item"><a href="{{ u('/explore') }}" class="{{ 'active' if active == 'explore' }}">Explore</a></div>
+  <div class="nav-item"><a href="{{ u('/settings') }}" class="{{ 'active' if active == 'settings' }}">Settings</a></div>
 </div>
 <script>
   // Theme preference is stored locally and applied before paint on every page.
@@ -118,19 +144,35 @@ HOME_TEMPLATE = (
     "{% block body %}"
     "<h1>OpenNet</h1>"
     "<p class='sub'>Seven apps, one shell.</p>"
-    "<form class='search' action='/' method='get'>"
+    "<form class='search' action='{{ u('/') }}' method='get'>"
     "  <input name='search' value='{{ query }}' placeholder='Search apps' aria-label='Search apps'>"
     "  <button type='submit'>Go</button>"
     "</form>"
-    "<div class='app-list'>"
+    "<div class='app-list' id='app-list'>"
     "{% for p in matched %}"
-    "  <div class='app'><a href='{{ p.route }}'>"
+    "  <div class='app' data-name='{{ p.name|lower }}'><a href='{{ u(p.route) }}'>"
     "    <span class='icon' aria-hidden='true'>{{ p.icon }}</span>"
     "    <span class='name'>{{ p.name }}</span>"
     "  </a></div>"
     "{% endfor %}"
     "</div>"
-    "{% if not matched %}<p class='empty'>No apps match &ldquo;{{ query }}&rdquo;.</p>{% endif %}"
+    "<p class='empty' id='no-match'{% if matched %} hidden{% endif %}>"
+    "No apps match &ldquo;<span id='no-match-q'>{{ query }}</span>&rdquo;.</p>"
+    "{% if static_build %}"
+    # A static site cannot filter server-side, so the query is applied here.
+    "<script>"
+    "(function(){var q=new URLSearchParams(location.search).get('search')||'';"
+    "var n=q.trim().toLowerCase();"
+    "var shown=0;"
+    "document.querySelectorAll('#app-list .app').forEach(function(el){"
+    "  var hit=!n||el.dataset.name.indexOf(n)>-1;"
+    "  el.style.display=hit?'':'none';if(hit){shown++;}});"
+    "var msg=document.getElementById('no-match');"
+    "document.getElementById('no-match-q').textContent=q;"
+    "if(msg){msg.hidden=shown>0;}"
+    "})();"
+    "</script>"
+    "{% endif %}"
     "{% endblock %}"
 )
 
@@ -141,7 +183,7 @@ EXPLORE_TEMPLATE = (
     "<h1>Explore</h1>"
     "<p class='sub'>Everything installed on this device.</p>"
     "{% for p in platforms %}"
-    "<a href='{{ p.route }}' style='text-decoration:none'>"
+    "<a href='{{ u(p.route) }}' style='text-decoration:none'>"
     "  <div class='card'><h3>{{ p.icon }} {{ p.name }}"
     "    <span class='badge'>{{ p.route }}</span></h3>"
     "    <p>{{ p.blurb }}</p></div>"
@@ -185,7 +227,7 @@ APP_TEMPLATE = (
     "{% extends 'shell' %}"
     "{% block title %}{{ name }} &middot; OpenNet{% endblock %}"
     "{% block body %}"
-    "<a class='back' href='/'>&larr; Home</a>"
+    "<a class='back' href='{{ u('/') }}'>&larr; Home</a>"
     "<h1>{{ icon }} {{ name }}</h1>"
     "<p class='sub'>{{ blurb }}</p>"
     "<div class='card'><h3>Coming soon</h3>"
@@ -200,6 +242,10 @@ app.jinja_env.loader = jinja2.ChoiceLoader([
     jinja2.DictLoader({"shell": SHELL}),
     app.jinja_env.loader,
 ])
+
+app.jinja_env.globals["u"] = site_url
+app.jinja_env.globals["static_build"] = STATIC_BUILD
+app.jinja_env.globals["base_url"] = BASE_URL
 
 VERSION = "1.0.0"
 
@@ -338,7 +384,14 @@ def search_documents(query, top_k=3):
             })
 
     results.sort(key=lambda item: item["score"], reverse=True)
-    return results[:top_k]
+
+    # A document can match by title and by content; keep only its best entry.
+    best_by_name = {}
+    for item in results:
+        if item["name"] not in best_by_name:
+            best_by_name[item["name"]] = item
+
+    return list(best_by_name.values())[:top_k]
 
 
 # --------------------------------------------------------------------------

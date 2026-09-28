@@ -93,11 +93,20 @@ def test_openbot_ui_calls_the_real_api(client):
     """Regression: the fetch to /openbot/api used to be commented out."""
     js = client.get("/static/openbot.js").get_data(as_text=True)
     live_calls = [
-        line.strip() for line in js.splitlines() if "fetch('/openbot/api'" in line
+        line.strip()
+        for line in js.splitlines()
+        if "fetch(" in line and "openbot/api" in line
     ]
     assert live_calls, "chat UI never calls /openbot/api"
     for line in live_calls:
         assert not line.startswith("//"), f"call is still commented out: {line}"
+
+
+def test_openbot_page_tells_the_script_where_the_api_is(client):
+    html = client.get("/openbot").get_data(as_text=True)
+    assert 'apiUrl: "/openbot/api"' in html
+    assert "staticBuild: false" in html
+    assert "/static/openbot-search.js" in html
 
 
 def test_openbot_ui_has_a_way_home(client):
@@ -234,3 +243,131 @@ def test_no_dead_placeholder_imports():
     """The original imported sqlite3, secure_filename, send_file and more, unused."""
     for unused in ("sqlite3", "secure_filename", "mimetypes", "unquote"):
         assert not hasattr(opennet, unused), f"{unused} is imported but never used"
+
+
+# --- base URL handling (Flask root vs GitHub Pages subpath) ----------------
+def test_site_url_on_flask_root():
+    assert opennet.site_url("/") == "/"
+    assert opennet.site_url("/openbot") == "/openbot"
+    assert opennet.site_url("static/openbot.css") == "/static/openbot.css"
+
+
+def test_site_url_on_a_static_subpath(monkeypatch):
+    monkeypatch.setattr(opennet, "BASE_URL", "/OpenNet-/")
+    monkeypatch.setattr(opennet, "STATIC_BUILD", True)
+    assert opennet.site_url("/") == "/OpenNet-/"
+    assert opennet.site_url("/openbot") == "/OpenNet-/openbot/"
+    assert opennet.site_url("/explore") == "/OpenNet-/explore/"
+
+
+def test_site_url_never_adds_a_slash_to_a_file(monkeypatch):
+    """Regression: assets got a trailing slash and would 404 on Pages."""
+    monkeypatch.setattr(opennet, "BASE_URL", "/OpenNet-/")
+    monkeypatch.setattr(opennet, "STATIC_BUILD", True)
+    assert opennet.site_url("static/openbot.css") == "/OpenNet-/static/openbot.css"
+    assert opennet.site_url("static/openbot.js") == "/OpenNet-/static/openbot.js"
+    assert opennet.site_url("docs/") == "/OpenNet-/docs/"
+
+
+def test_flask_pages_use_root_relative_links(client):
+    """On Flask the app must keep working from the root, unchanged."""
+    html = client.get("/").get_data(as_text=True)
+    assert "href='/openbot'" in html
+    assert "/openbot/" not in html
+
+
+# --- browser/Python retrieval parity (GitHub Pages build) ------------------
+PARITY_QUERIES = [
+    "which apps are installed in OpenNet?",
+    "how do I run opennet in production with gunicorn?",
+    "how does openbot cache parsed documents?",
+    "getting-started.txt",
+    "what file types does openbot support?",
+    "xyzzy plugh frobnicate",
+]
+
+
+def _node_available():
+    import shutil
+
+    return shutil.which("node") is not None
+
+
+@pytest.mark.skipif(not _node_available(), reason="node is not installed")
+def test_browser_search_matches_python_search(tmp_path):
+    """GitHub Pages has no API, so openbot-search.js must rank identically."""
+    import subprocess
+
+    expected = []
+    for question in PARITY_QUERIES:
+        matches = opennet.search_documents(question, top_k=3)
+        expected.append({
+            "question": question,
+            "expected_names": [m["name"] for m in matches],
+            "expected_top_score": matches[0]["score"] if matches else 0.0,
+        })
+
+    payload = tmp_path / "expected.json"
+    payload.write_text(json.dumps(expected), encoding="utf-8")
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    script = os.path.join(repo_root, "tests", "js", "parity_check.mjs")
+
+    result = subprocess.run(
+        ["node", script, str(payload), opennet.DOCS_DIR],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
+    )
+    assert result.returncode == 0, (
+        "browser search disagreed with app.py:\n"
+        f"{result.stdout}\n{result.stderr}"
+    )
+    assert "agree with app.py" in result.stdout
+
+
+def test_static_build_emits_every_page(tmp_path, monkeypatch):
+    """The GitHub Pages build must cover every page the shell links to."""
+    import importlib
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    builder = importlib.import_module("build_static")
+
+    # Build in this process, then restore the module-level config.
+    monkeypatch.setenv("BASE_URL", "/OpenNet-/")
+    monkeypatch.setenv("OPENNET_STATIC", "1")
+    importlib.reload(opennet)
+    try:
+        written, manifest = builder.build("/OpenNet-/", str(tmp_path), repo_root)
+    finally:
+        monkeypatch.delenv("BASE_URL", raising=False)
+        monkeypatch.delenv("OPENNET_STATIC", raising=False)
+        importlib.reload(opennet)
+
+    for route in [p["route"].strip("/") for p in opennet.platforms] + ["explore", "settings"]:
+        assert os.path.isfile(os.path.join(tmp_path, route, "index.html")), route
+    assert "index.html" in written
+    assert [d["name"] for d in manifest]
+    assert (tmp_path / "docs" / "index.json").is_file()
+    assert (tmp_path / "static" / "openbot-search.js").is_file()
+    assert (tmp_path / "404.html").is_file()
+
+    home = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "href='/OpenNet-/openbot/'" in home
+    # Assets must not pick up a trailing slash.
+    assert "/static/openbot.css/" not in home
+
+
+def test_search_returns_each_document_at_most_once():
+    """A document can match by title and by content - only the best should show."""
+    matches = opennet.search_documents("getting-started.txt", top_k=5)
+    names = [m["name"] for m in matches]
+    assert len(names) == len(set(names)), f"duplicate documents: {names}"
+    assert names[0] == "getting-started.txt"
+
+
+def test_search_scores_are_ordered_descending():
+    matches = opennet.search_documents("opennet documents flask python", top_k=5)
+    scores = [m["score"] for m in matches]
+    assert scores == sorted(scores, reverse=True), scores

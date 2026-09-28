@@ -22,3 +22,6 @@ static/uploads/
 .vscode/
 .idea/
 .DS_Store
+
+# Static build output
+site/

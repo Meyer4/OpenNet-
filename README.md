@@ -83,10 +83,47 @@ Malformed or empty requests return `400` with an `error` field, never a `500`.
 
 ## Deploying
 
-**Render (easiest - one click, free tier).** Push to GitHub, then in Render
-choose *New +* → *Blueprint* and point it at this repository. The included
-[`render.yaml`](render.yaml) sets the build command, start command and
-`/healthz` health check. You get a public `https://<app>.onrender.com` URL.
+### GitHub Pages (static, free, permanent)
+
+[`build_static.py`](build_static.py) renders every page through the real Flask
+routes and writes a plain HTML site, so the Flask app stays the single source of
+truth. Push to `main` and
+[`pages.yml`](.github/workflows/pages.yml) builds and publishes it to
+`https://<user>.github.io/<repo>/`.
+
+Enable it once in the repository: *Settings* → *Pages* → *Source* → **GitHub
+Actions**.
+
+Build it yourself:
+
+```bash
+python build_static.py --base /OpenNet-/ --out site
+```
+
+`--base` must be the path the site is served from, including both slashes. Pass
+`/` if you publish from a custom domain or a user site.
+
+**What changes on a static host.** There is no server, so OpenBot's search runs
+in the browser (`static/openbot-search.js`) against the documents copied into
+`site/docs/`. The ranking is the same algorithm as the Python one and is verified
+to agree by `tests/js/parity_check.mjs`. Two differences follow from having no
+server:
+
+- the knowledge folder is fixed at build time, rather than set by
+  `OPENBOT_DOCS_DIR` at runtime;
+- PDFs are copied but not searched, since parsing them needs a server. Text
+  formats are searched normally.
+
+The chat page detects which host it is on: it calls `/openbot/api` when there is
+one and falls back to the in-browser search otherwise, so the same code works on
+both.
+
+### Running the server
+
+**Render (one click, free tier).** In Render choose *New +* → *Blueprint* and
+point it at this repository. The included [`render.yaml`](render.yaml) sets the
+build command, start command and `/healthz` health check. You get a public
+`https://<app>.onrender.com` URL.
 
 **Docker.** [`Dockerfile`](Dockerfile) builds a slim image that runs as a
 non-root user with a health check:
@@ -107,6 +144,14 @@ pull request: it installs the pinned dependencies, runs the test suite on Python
 3.9/3.11/3.12, then boots the real server under Gunicorn and checks that `/`,
 `/openbot`, `/piggybank` and `/healthz` all return `200`.
 
+The suite includes a cross-language check: `tests/js/parity_check.mjs` runs the
+browser retrieval in Node and asserts it ranks documents exactly as `app.py`
+does, so the static site cannot silently drift from the server.
+
+[`pages.yml`](.github/workflows/pages.yml) runs on `main`, re-runs the tests,
+builds the static site and verifies that every internal link and asset in it
+resolves to a real file before publishing.
+
 `.github/workflows/aws.yml` is an opt-in, manual ECR image build. It skips
 cleanly until real AWS values and secrets are configured - see the comments at
 the top of that file.
@@ -114,12 +159,15 @@ the top of that file.
 ## Layout
 
 ```
-app.py                 Flask app: routes, search, error handling
-templates/openbot.html OpenBot chat markup
-static/openbot.css     OpenBot styles
-static/openbot.js      OpenBot behaviour, including the API call
-docs/                  OpenBot's default knowledge folder
-tests/test_app.py      Route and API regression tests
+app.py                  Flask app: routes, search, error handling
+build_static.py         Renders the GitHub Pages build from the Flask routes
+templates/openbot.html  OpenBot chat markup
+static/openbot.css      OpenBot styles
+static/openbot.js       OpenBot behaviour, including the API call and fallback
+static/openbot-search.js  In-browser retrieval used by the static build
+docs/                   OpenBot's knowledge folder
+tests/test_app.py       Route, API and static-build regression tests
+tests/js/parity_check.mjs  Proves the browser search matches app.py
 ```
 
 ## Licence

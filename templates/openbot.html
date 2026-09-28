@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OpenBot &middot; OpenNet</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&amp;display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='openbot.css') }}" />
+  <link rel="stylesheet" href="{{ u('static/openbot.css') }}" />
 </head>
 <body>
-  <header><a href="/">&larr; Home</a>OpenBot</header>
+  <header><a href="{{ u('/') }}">&larr; Home</a>OpenBot</header>
 
   <div id="chat-container" role="log" aria-live="polite" aria-atomic="false" aria-relevant="additions">
     <!-- Messages are appended here by openbot.js -->
@@ -52,6 +52,16 @@
     </div>
   </form>
 
-  <script src="{{ url_for('static', filename='openbot.js') }}"></script>
+  <script>
+    // Read by openbot.js. On a static host there is no API, so the search runs
+    // in the browser against the documents copied next to the site.
+    window.OPENBOT_CONFIG = {
+      apiUrl: "{{ u('/openbot/api') }}",
+      docsUrl: "{{ u('docs/') }}",
+      staticBuild: {{ 'true' if static_build else 'false' }}
+    };
+  </script>
+  <script src="{{ u('static/openbot-search.js') }}"></script>
+  <script src="{{ u('static/openbot.js') }}"></script>
 </body>
 </html>
