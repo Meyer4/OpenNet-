@@ -1,0 +1,23 @@
+OpenNet Overview
+
+OpenNet is a small multi-app shell written in Python with Flask. It puts several
+self-contained mini applications behind one home screen, so they share navigation,
+styling and deployment.
+
+The installed apps are:
+
+  OpenBot    - a chat assistant that answers questions from your documents.
+  E-Book     - read and manage e-books.
+  AppBox     - a toolbox of small utilities.
+  MyFace     - your profile and avatar.
+  MyVids     - watch and organise videos.
+  Piggy Bank - track savings and spending.
+  SnapStyle  - photos, filters and galleries.
+
+Every app is reachable from the home screen at the root URL, and from the Explore
+page, which lists each app with a short description. The bottom navigation bar
+provides Home, Explore and Settings on every page.
+
+OpenNet is designed to be deployed as a single container or a single process. It
+has no database and no build step: installing the Python dependencies and running
+the app is enough.

@@ -1,0 +1,31 @@
+Getting Started with OpenNet
+
+Requirements
+  Python 3.9 or newer.
+
+Install
+  python -m venv .venv
+  source .venv/bin/activate        # Windows: .venv\Scripts\activate
+  pip install -r requirements.txt
+
+Run in development
+  python app.py
+  Then open http://localhost:5000
+
+Run in production
+  gunicorn app:app --bind 0.0.0.0:$PORT
+  Gunicorn is included in requirements.txt. The app reads the PORT environment
+  variable, which is what Render, Railway, Fly.io and Heroku all provide.
+
+Run the tests
+  pytest
+
+Useful environment variables
+  PORT               port to listen on, defaults to 5000
+  SECRET_KEY         Flask secret key, set this in production
+  OPENBOT_DOCS_DIR   folder OpenBot searches, defaults to ./docs
+  FLASK_DEBUG        set to 1 to enable the debug reloader locally
+
+Health check
+  GET /healthz returns JSON with the app status. Hosting platforms can poll it
+  to confirm the service is alive.

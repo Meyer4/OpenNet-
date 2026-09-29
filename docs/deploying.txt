@@ -1,0 +1,48 @@
+Deploying OpenNet
+
+OpenNet can be deployed as a static site or as a running Python server. Both
+paths use the same code.
+
+GitHub Pages (static)
+
+    python build_static.py --base /OpenNet-/ --out site
+
+The build script renders every page through the Flask routes and writes a plain
+HTML site. Push to the main branch and the pages workflow publishes it to
+https://<user>.github.io/<repo>/. Enable it once under Settings, then Pages,
+then set Source to GitHub Actions.
+
+The base argument must be the path the site is served from, including both
+slashes. Use a single slash if the site is served from a custom domain.
+
+On a static host there is no server, so OpenBot searches the documents in the
+browser instead. The ranking matches the server exactly. PDF files are copied
+but not searched, because parsing them needs a server.
+
+Render
+
+Render is the simplest way to deploy the server. Choose New, then Blueprint, and
+point it at the repository. The render.yaml file already sets the build command,
+the start command and the health check path. The result is a public
+https://<app>.onrender.com address.
+
+Docker
+
+    docker build -t opennet .
+    docker run -p 8080:8080 opennet
+
+The Dockerfile produces a slim image that runs as a non-root user and includes a
+health check. The same image works on Fly.io, Railway, Amazon ECS or any other
+container host.
+
+Any Python host
+
+The Procfile provides the start command, and the app reads the PORT environment
+variable, which is what Render, Railway, Fly.io and Heroku all supply:
+
+    gunicorn app:app --bind 0.0.0.0:$PORT
+
+Health check
+
+Hosting platforms can poll GET /healthz. It returns JSON with the app status,
+the version and the number of installed apps.

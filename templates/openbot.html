@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenBot &middot; OpenNet</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&amp;display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ u('static/openbot.css') }}" />
+</head>
+<body>
+  <header><a href="{{ u('/') }}">&larr; Home</a>OpenBot</header>
+
+  <div id="chat-container" role="log" aria-live="polite" aria-atomic="false" aria-relevant="additions">
+    <!-- Messages are appended here by openbot.js -->
+  </div>
+
+  <form id="input-container" onsubmit="return false;" aria-label="Send message">
+    <div id="input-top-row">
+      <textarea
+        id="chat-input"
+        rows="1"
+        placeholder="Ask me anything..."
+        aria-label="Type your message here"
+        autocomplete="off"
+        spellcheck="false"
+        required
+      ></textarea>
+
+      <button id="send-btn" type="submit" title="Send Message" aria-label="Send message" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div id="bottom-icons">
+      <button id="voice-btn" type="button" title="Start Voice Input" aria-pressed="false"
+              aria-label="Voice input" class="icon-btn">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zM19 11v1a7 7 0 0 1-14 0v-1H3v1a9 9 0 0 0 8 8.94V23h2v-2.06A9 9 0 0 0 21 12v-1h-2z"></path>
+        </svg>
+      </button>
+
+      <label for="file-picker" class="icon-btn" title="Pick Photo or File" role="button"
+             tabindex="0" aria-label="Pick photo or file">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM5 5h14v14H5V5zm6 3a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"></path>
+          <circle cx="11" cy="14" r="1.5"></circle>
+        </svg>
+      </label>
+      <input type="file" id="file-picker" style="display:none" />
+    </div>
+  </form>
+
+  <script>
+    // Read by openbot.js. On a static host there is no API, so the search runs
+    // in the browser against the documents copied next to the site.
+    window.OPENBOT_CONFIG = {
+      apiUrl: "{{ u('/openbot/api') }}",
+      docsUrl: "{{ u('docs/') }}",
+      staticBuild: {{ 'true' if static_build else 'false' }}
+    };
+  </script>
+  <script src="{{ u('static/openbot-search.js') }}"></script>
+  <script src="{{ u('static/openbot.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# One-click deploy blueprint for Render (https://render.com).
+# Push this repo to GitHub, then in Render choose
+# "New +" -> "Blueprint" and point it at the repository.
+services:
+  - type: web
+    name: opennet
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: SECRET_KEY
+        generateValue: true
