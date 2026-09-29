@@ -371,3 +371,58 @@ def test_search_scores_are_ordered_descending():
     matches = opennet.search_documents("opennet documents flask python", top_k=5)
     scores = [m["score"] for m in matches]
     assert scores == sorted(scores, reverse=True), scores
+
+
+def _build_site(tmp_path, monkeypatch):
+    """Build the static site into tmp_path, then restore module config."""
+    import importlib
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    builder = importlib.import_module("build_static")
+    monkeypatch.setenv("BASE_URL", "/OpenNet-/")
+    monkeypatch.setenv("OPENNET_STATIC", "1")
+    importlib.reload(opennet)
+    try:
+        builder.build("/OpenNet-/", str(tmp_path), repo_root)
+    finally:
+        monkeypatch.delenv("BASE_URL", raising=False)
+        monkeypatch.delenv("OPENNET_STATIC", raising=False)
+        importlib.reload(opennet)
+
+
+def test_static_build_has_no_broken_links(tmp_path, monkeypatch):
+    """Every internal link in the Pages build must resolve to a real file.
+
+    Guards against the class of bug where a subpath deployment silently 404s on
+    its own assets. The link count is asserted so the check cannot pass
+    vacuously by matching nothing.
+    """
+    import pathlib
+    import re
+
+    _build_site(tmp_path, monkeypatch)
+
+    base = "/OpenNet-/"
+    # Shell templates use single quotes, the OpenBot template double.
+    pattern = re.compile(r"""(?:href|src)=["']([^"']+)["']""")
+
+    checked = 0
+    broken = []
+    root = pathlib.Path(tmp_path)
+    for page in sorted(root.rglob("*.html")):
+        text = page.read_text(encoding="utf-8")
+        for url in pattern.findall(text):
+            if url.startswith(("http://", "https://", "#", "mailto:")):
+                continue
+            checked += 1
+            if not url.startswith(base):
+                broken.append(f"{page.name}: {url} escapes the base path")
+                continue
+            target = root / url[len(base):].rstrip("/")
+            if "." not in url.rstrip("/").split("/")[-1]:
+                target = target / "index.html"
+            if not target.exists():
+                broken.append(f"{page.name}: {url} -> missing {target}")
+
+    assert checked >= 50, f"only {checked} links inspected - the pattern is not matching"
+    assert not broken, "broken links in the static build:\n" + "\n".join(broken)
