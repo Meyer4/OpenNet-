@@ -16,7 +16,7 @@ if (!expectedPath || !docsDir) {
 // Load the browser module. It attaches to globalThis when there is no window.
 const src = readFileSync(new URL('../../static/openbot-search.js', import.meta.url), 'utf8');
 (0, eval)(src);
-const { searchDocs } = globalThis.OpenBotSearch;
+const { searchDocs, tokens } = globalThis.OpenBotSearch;
 
 const docs = readdirSync(docsDir)
   .filter((name) => /\.(txt|md|markdown|rst|csv|json)$/i.test(name))
@@ -26,7 +26,18 @@ const docs = readdirSync(docsDir)
 const expected = JSON.parse(readFileSync(expectedPath, 'utf8'));
 
 let failures = 0;
-for (const { question, expected_names, expected_top_score } of expected) {
+for (const { question, expected_names, expected_top_score, expected_tokens } of expected) {
+  if (expected_tokens) {
+    const actualTokens = [...tokens(question)].sort();
+    if (JSON.stringify(actualTokens) !== JSON.stringify(expected_tokens)) {
+      console.error(`TOKEN MISMATCH for ${JSON.stringify(question)}`);
+      console.error(`  python: ${JSON.stringify(expected_tokens)}`);
+      console.error(`  js:     ${JSON.stringify(actualTokens)}`);
+      failures += 1;
+      continue;
+    }
+  }
+
   const actual = searchDocs(question, docs, 3);
   const actualNames = actual.map((m) => m.name);
 

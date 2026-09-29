@@ -338,14 +338,45 @@ def _tokens(text):
     return set(_WORD.findall(text.lower()))
 
 
+# Common English words carrying no topical signal. Without filtering them a
+# question like "how do I deploy with gunicorn" ties several documents on "how".
+STOPWORDS = frozenset(
+    ["a", "about", "above", "after", "again", "all", "also", "am", "an", "and", "any", "are", "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by", "can", "could", "did", "do", "does", "doing", "down", "during", "each", "few", "for", "from", "further", "had", "has", "have", "having", "he", "her", "here", "hers", "him", "his", "how", "i", "if", "in", "into", "is", "it", "its", "itself", "just", "me", "more", "most", "my", "no", "nor", "not", "of", "off", "on", "once", "only", "or", "other", "our", "ours", "out", "over", "own", "same", "she", "should", "so", "some", "such", "than", "that", "the", "their", "theirs", "them", "then", "there", "these", "they", "this", "those", "through", "to", "too", "under", "until", "up", "very", "was", "we", "were", "what", "when", "where", "which", "while", "who", "whom", "why", "will", "with", "you", "your", "yours"]
+)
+
+
+def _tokens(text):
+    return {w for w in _WORD.findall(text.lower()) if w not in STOPWORDS}
+
+
 def _score_chunk(chunk_tokens, query_tokens):
+    """Fraction of the query's content words that the chunk covers."""
     if not query_tokens:
         return 0.0
     hits = chunk_tokens & query_tokens
     if not hits:
         return 0.0
-    # Coverage of the query matters more than raw hit count.
     return len(hits) / len(query_tokens)
+
+
+@lru_cache(maxsize=1)
+def _build_index(signature):
+    """Pre-chunk and pre-tokenise every document.
+
+    ``signature`` is the cache key, so this is rebuilt only when docs change.
+    """
+    del signature  # cache key only
+    indexed = []
+    for doc in load_documents():
+        chunk_list = [
+            (chunk, _tokens(chunk)) for chunk in _chunks(doc["text"])
+        ]
+        indexed.append((doc, chunk_list))
+    return indexed
+
+
+def build_index():
+    return _build_index(_docs_signature())
 
 
 def search_documents(query, top_k=3):
@@ -355,7 +386,7 @@ def search_documents(query, top_k=3):
         return []
 
     results = []
-    for doc in load_documents():
+    for doc, chunk_list in build_index():
         name_ratio = difflib.SequenceMatcher(
             None, doc["name"].lower(), query.lower()
         ).ratio()
@@ -368,8 +399,8 @@ def search_documents(query, top_k=3):
             })
 
         best = (0.0, "")
-        for chunk in _chunks(doc["text"]):
-            score = _score_chunk(_tokens(chunk), query_tokens)
+        for chunk, chunk_tokens in chunk_list:
+            score = _score_chunk(chunk_tokens, query_tokens)
             if score > best[0]:
                 best = (score, chunk)
         if best[0] > 0:

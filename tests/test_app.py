@@ -193,7 +193,21 @@ def test_docs_folder_ships_with_the_repo():
 def test_search_ranks_relevant_document_first():
     matches = opennet.search_documents("how do I deploy opennet with gunicorn")
     assert matches
-    assert matches[0]["name"] == "getting-started.txt"
+    # Both documents cover deploying with gunicorn; neither may be beaten by a
+    # document that only matches the word "opennet".
+    assert matches[0]["name"] in {"deploying.txt", "getting-started.txt"}
+    assert matches[0]["score"] > 0.5
+
+
+def test_stopwords_do_not_drive_the_ranking():
+    """Regression: "how do I deploy" tied three documents on the word "how"."""
+    assert "how" in opennet.STOPWORDS
+    assert opennet._tokens("how do I deploy opennet with gunicorn") == {
+        "deploy", "gunicorn", "opennet"
+    }
+    top = opennet.search_documents("how do I deploy opennet?")[0]
+    assert top["name"] == "deploying.txt"
+    assert top["score"] == 1.0
 
 
 def test_search_returns_nothing_for_an_empty_query():
@@ -280,6 +294,8 @@ def test_flask_pages_use_root_relative_links(client):
 PARITY_QUERIES = [
     "which apps are installed in OpenNet?",
     "how do I run opennet in production with gunicorn?",
+    "how do I deploy opennet?",
+    "how do I publish to github pages?",
     "how does openbot cache parsed documents?",
     "getting-started.txt",
     "what file types does openbot support?",
@@ -305,6 +321,7 @@ def test_browser_search_matches_python_search(tmp_path):
             "question": question,
             "expected_names": [m["name"] for m in matches],
             "expected_top_score": matches[0]["score"] if matches else 0.0,
+            "expected_tokens": sorted(opennet._tokens(question)),
         })
 
     payload = tmp_path / "expected.json"
