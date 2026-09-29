@@ -1,0 +1,19 @@
+# Netlify build configuration.
+#
+# Netlify is already connected to this repository, so pushing to main publishes
+# https://opennet.netlify.app automatically. The site is static: build_static.py
+# renders every page through the Flask routes and OpenBot then searches the
+# documents in the browser, so no server process is needed.
+#
+# --base is "/" because Netlify serves the site from the domain root, unlike
+# GitHub Pages which serves a project site from /<repo>/.
+
+[build]
+  command = "pip install -r requirements.txt && python build_static.py --base / --out site"
+  publish = "site"
+
+[build.environment]
+  PYTHON_VERSION = "3.12"
+
+# Every route is a real directory with an index.html, so trailing slashes are
+# canonical. Netlify serves 404.html (copied in by the build) for anything else.

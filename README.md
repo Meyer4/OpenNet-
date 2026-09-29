@@ -83,7 +83,20 @@ Malformed or empty requests return `400` with an `error` field, never a `500`.
 
 ## Deploying
 
-### GitHub Pages (static, free, permanent)
+### Netlify (live)
+
+Netlify is connected to this repository, so pushing to `main` publishes
+**<https://opennet.netlify.app>** automatically. [`netlify.toml`](netlify.toml)
+runs the static build and publishes `site/`:
+
+```toml
+command = "pip install -r requirements.txt && python build_static.py --base / --out site"
+publish = "site"
+```
+
+`--base` is `/` because Netlify serves from the domain root.
+
+### GitHub Pages
 
 [`build_static.py`](build_static.py) renders every page through the real Flask
 routes and writes a plain HTML site, so the Flask app stays the single source of
@@ -91,8 +104,9 @@ truth. Push to `main` and
 [`pages.yml`](.github/workflows/pages.yml) builds and publishes it to
 `https://<user>.github.io/<repo>/`.
 
-Enable it once in the repository: *Settings* → *Pages* → *Source* → **GitHub
-Actions**.
+It needs one manual step first: *Settings* → *Pages* → *Source* → **GitHub
+Actions**. Until that is set, the workflow runs the tests and the site build,
+then skips publishing with a notice rather than failing.
 
 Build it yourself:
 
@@ -101,7 +115,7 @@ python build_static.py --base /OpenNet-/ --out site
 ```
 
 `--base` must be the path the site is served from, including both slashes. Pass
-`/` if you publish from a custom domain or a user site.
+`/` if you publish from a custom domain, a user site, or Netlify.
 
 **What changes on a static host.** There is no server, so OpenBot's search runs
 in the browser (`static/openbot-search.js`) against the documents copied into
